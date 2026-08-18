@@ -50,7 +50,9 @@ Plan plan(double stock, List<Piece> pieces, double cutLabour) {
   } else {
     final lengths = <double>[];
     for (final p in pieces) {
-      for (var i = 0; i < p.count; i++) lengths.add(p.length);
+      for (var i = 0; i < p.count; i++) {
+        lengths.add(p.length);
+      }
     }
     lengths.sort((a, b) => b.compareTo(a));
     final remain = <double>[];
