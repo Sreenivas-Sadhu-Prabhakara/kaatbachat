@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaatbachat — cutting plan</title>
+<meta name="description" content="Kaatbachat packs several required cut lengths into the fewest stock units (first-fit-decreasing), so a rod/pipe/cable shop stops over- or under-buying stock.">
+<style>
+  :root{--bg:#f3f4f6;--card:#fff;--ink:#181c22;--muted:#5a6472;--brand:#444b57;--brand-ink:#2a2f38;--line:#dde1e7;--accent:#e9ebef}
+  @media (prefers-color-scheme:dark){:root{--bg:#101216;--card:#181b21;--ink:#e6e9ee;--muted:#98a2b2;--brand:#8b93a2;--brand-ink:#c7cdd8;--line:#252a32;--accent:#171a20}}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  header{padding:64px 0 24px;text-align:center}
+  .eyebrow{color:var(--brand);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px}
+  h1{font-size:44px;margin:.2em 0 .1em;letter-spacing:-.02em}
+  .tag{color:var(--muted);font-size:19px;max-width:640px;margin:8px auto 0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:28px 0}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:34px}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .card h2{margin:0 0 8px;font-size:20px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:15px}
+  .out{margin-top:16px;background:var(--accent);border-radius:12px;padding:16px}
+  .big{font-size:28px;font-weight:800;color:var(--brand-ink)}
+  .bin{font-family:ui-monospace,Menlo,monospace;font-size:13px;padding:3px 0;border-top:1px dashed var(--line)}
+  footer{color:var(--muted);font-size:13px;text-align:center;padding:40px 0}
+  code{background:var(--accent);padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Kaatbachat · काट बचत</div>
+    <h1>Fewest rods, least offcut</h1>
+    <p class="tag">A customer wants several odd lengths in one job. Kaatbachat packs them into the
+      minimum number of stock rods — a real bin-packing problem you can't eyeball.</p>
+  </header>
+  <div class="grid">
+    <div class="card">
+      <h2>Try it</h2>
+      <label>Stock length (m)</label><input id="stock" type="number" value="6">
+      <label>Required pieces — <code>length x count</code>, comma-separated</label>
+      <input id="req" type="text" value="2.3x3, 1.7x5, 0.9x2">
+      <label>Cut labour (₹/cut)</label><input id="lab" type="number" value="5">
+      <div class="out">
+        <div>Stock units needed</div><div class="big" id="units">–</div>
+        <div id="meta" style="font-size:14px;color:var(--muted)"></div>
+        <div id="bins" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Why not just divide?</h2>
+      <p style="color:var(--muted)">A single length ÷ stock is easy — Kaatbachat does exactly that and
+        skips the fancy framing. But combining <i>different</i> lengths across rods to minimise offcut
+        has no closed form; over- or under-buying stock is real money.</p>
+      <p style="color:var(--muted)">This runs first-fit-decreasing: place the longest pieces first,
+        into the first rod that still has room.</p>
+      <p style="color:var(--muted);font-size:14px">Flutter → Go → PostgreSQL; the Go engine plans the cuts.</p>
+    </div>
+  </div>
+  <footer>Kaatbachat · a local-first shopkeeper tool · offline, no account.</footer>
+</div>
+<script>
+  const $=id=>document.getElementById(id);
+  function parseReq(s){
+    const out=[];
+    for(const part of s.split(',')){
+      const m=part.trim().match(/^([\d.]+)\s*x\s*(\d+)$/i);
+      if(m) out.push({len:+m[1], count:+m[2]});
+    }
+    return out;
+  }
+  function calc(){
+    const stock=+$('stock').value||0, lab=+$('lab').value||0, pieces=parseReq($('req').value);
+    if(stock<=0||!pieces.length){ $('units').textContent='–'; $('meta').textContent=''; $('bins').innerHTML=''; return; }
+    const distinct=new Set(pieces.map(p=>p.len));
+    let bins=[], single=false;
+    let total=pieces.reduce((s,p)=>s+p.count,0);
+    if(distinct.size===1){
+      single=true; const len=pieces[0].len; let per=Math.max(1,Math.floor(stock/len)); let rem=total;
+      while(rem>0){ const n=Math.min(per,rem); bins.push(Array(n).fill(len)); rem-=n; }
+    } else {
+      const lengths=[]; for(const p of pieces){ for(let i=0;i<p.count;i++) lengths.push(p.len); }
+      lengths.sort((a,b)=>b-a); const remain=[];
+      for(const L of lengths){
+        let placed=false;
+        for(let i=0;i<bins.length;i++){ if(remain[i]>=L){ bins[i].push(L); remain[i]-=L; placed=true; break; } }
+        if(!placed){ bins.push([L]); remain.push(stock-L); }
+      }
+    }
+    let offcut=0, cuts=0;
+    for(const b of bins){ let used=0; for(const L of b){ used+=L; cuts++; } offcut+=stock-used; }
+    $('units').textContent=bins.length;
+    $('meta').textContent=`offcut ${offcut.toFixed(2)} m · ${cuts} cuts · labour ₹${(cuts*lab).toFixed(2)}${single?' · single length':''}`;
+    $('bins').innerHTML=bins.map((b,i)=>`<div class="bin">Stock ${i+1}: ${b.map(L=>L.toFixed(2)).join(' + ')}</div>`).join('');
+  }
+  document.querySelectorAll('input').forEach(el=>el.addEventListener('input',calc)); calc();
+</script>
+</body>
+</html>
